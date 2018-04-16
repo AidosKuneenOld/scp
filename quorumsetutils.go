@@ -116,6 +116,6 @@ func NormalizeQSet(qSet *types.SCPQuorumSet) {
 
 		//t := qSet.InnerSets[len(qSet.InnerSets)-1]
 		// or t := qSet.InnerSets[0] ?
-		qSet = &iS[0]
+		*qSet = iS[0]
 	}
 }
