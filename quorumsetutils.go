@@ -98,11 +98,11 @@ func IsQuorumSetSane(qSet types.SCPQuorumSet, extraChecks bool) bool {
 //      { t: n, v: { ..., X }, .... }
 //  * simplifies singleton innersets
 //      { t:1, { innerSet } } into innerSet
-func NormalizeQSet(qSet types.SCPQuorumSet) {
+func NormalizeQSet(qSet *types.SCPQuorumSet) {
 	v := qSet.Validators
 	iS := qSet.InnerSets
 	for i := len(iS) - 1; i >= 0; i-- {
-		NormalizeQSet(iS[i])
+		NormalizeQSet(&iS[i])
 		// merge singleton inner sets into validator list
 		if iS[i].Threshold == 1 && len(iS[i].Validators) == 1 &&
 			len(iS[i].InnerSets) == 0 {
@@ -114,8 +114,8 @@ func NormalizeQSet(qSet types.SCPQuorumSet) {
 	// simplify quorum set if needed
 	if qSet.Threshold == 1 && len(v) == 0 && len(iS) == 1 {
 
-		t := qSet.InnerSets[len(qSet.InnerSets)-1]
+		//t := qSet.InnerSets[len(qSet.InnerSets)-1]
 		// or t := qSet.InnerSets[0] ?
-		qSet = t
+		qSet = &iS[0]
 	}
 }
