@@ -20,57 +20,7 @@
 
 // Adapted from C++ code by 2014 Stellar Development Foundation and contributors
 
-package types
+package scp
 
-//enum
-type CryptoKeyType int
-
-const (
-	KeyTypeED25519 CryptoKeyType = iota
-	KeyTypePreAuthTx
-	KeyTypeHashX
-)
-
-//enum
-type PublicKeyType int
-
-const (
-	PublicKeyTypeED25519 PublicKeyType = iota
-)
-
-//enum
-type SignerKeyType int
-
-const (
-	SignerKeyTypeED25519   = KeyTypeED25519
-	SignerKeyTypePreAuthTx = KeyTypePreAuthTx
-	SignerKeyTypeHashX     = KeyTypeHashX
-)
-
-type PublicKey struct {
-	PublicKeyTypeED25519 struct {
-		ed25519 uint256
-	}
+type SCP struct {
 }
-
-type SignerKey struct {
-	SignerKeyTypeED25519 struct {
-		ed25519 uint256
-	}
-	SignerKeyTypePreAuthTx struct {
-		/* Hash of Transaction structure */
-		preAuthTx uint256
-	}
-	SignerKeyTypeHashX struct {
-		/* Hash of Transaction structure */
-		hashX uint256
-	}
-}
-
-type NodeID = PublicKey
-
-type Hash [32]uint8
-type uint256 [32]uint8
-
-type Signature [64]uint8
-type SignatureHint [4]uint8

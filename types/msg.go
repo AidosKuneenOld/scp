@@ -18,59 +18,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-// Adapted from C++ code by 2014 Stellar Development Foundation and contributors
-
 package types
 
-//enum
-type CryptoKeyType int
+import (
+	"bytes"
+	"log"
 
-const (
-	KeyTypeED25519 CryptoKeyType = iota
-	KeyTypePreAuthTx
-	KeyTypeHashX
+	"github.com/vmihailenco/msgpack"
 )
 
-//enum
-type PublicKeyType int
-
-const (
-	PublicKeyTypeED25519 PublicKeyType = iota
-)
-
-//enum
-type SignerKeyType int
-
-const (
-	SignerKeyTypeED25519   = KeyTypeED25519
-	SignerKeyTypePreAuthTx = KeyTypePreAuthTx
-	SignerKeyTypeHashX     = KeyTypeHashX
-)
-
-type PublicKey struct {
-	PublicKeyTypeED25519 struct {
-		ed25519 uint256
+func Pack(dat interface{}) []byte {
+	var buf bytes.Buffer
+	enc := msgpack.NewEncoder(&buf).StructAsArray(true)
+	if err := enc.Encode(dat); err != nil {
+		log.Fatal(err)
 	}
+	return buf.Bytes()
 }
 
-type SignerKey struct {
-	SignerKeyTypeED25519 struct {
-		ed25519 uint256
-	}
-	SignerKeyTypePreAuthTx struct {
-		/* Hash of Transaction structure */
-		preAuthTx uint256
-	}
-	SignerKeyTypeHashX struct {
-		/* Hash of Transaction structure */
-		hashX uint256
-	}
-}
-
-type NodeID = PublicKey
-
-type Hash [32]uint8
-type uint256 [32]uint8
-
-type Signature [64]uint8
-type SignatureHint [4]uint8
+//Unpack returns tx from msgpack bin data.
+// func (dat *interface{}) Unpack(dat []byte) error {
+// 	buf := bytes.NewBuffer(dat)
+// 	dec := msgpack.NewDecoder(buf)
+// 	return dec.Decode(dat)
+// }
