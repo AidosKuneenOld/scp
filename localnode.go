@@ -25,6 +25,8 @@ package scp
 import (
 	"crypto/sha256"
 	"log"
+	"math"
+	"math/big"
 
 	"github.com/scp/types"
 )
@@ -72,4 +74,142 @@ func (nl *LocalNode) UpdateQuorumSet(qSet types.SCPQuorumSet) {
 
 func (nl *LocalNode) QuorumSet() types.SCPQuorumSet {
 	return nl.mQSet
+}
+
+func (nl *LocalNode) QuorumSetHash() types.Hash {
+	return nl.mQSetHash
+}
+
+// returns the quorum set {{X}}
+func SingletonQSet(nodeID types.NodeID) *types.SCPQuorumSet {
+	return buildSingletonQSet(nodeID)
+}
+
+// called recursively
+func forAllNodesInternal(qset types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
+
+	for _, n := range qset.Validators {
+		proc(n)
+	}
+	for _, q := range qset.InnerSets {
+		forAllNodesInternal(q, proc)
+	}
+}
+
+// runs proc over all nodes contained in qset
+func ForAllNodes(qset types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
+	var done map[types.NodeID]struct{}
+	forAllNodesInternal(qset, func(n types.NodeID) {
+		if _, exist := done[n]; !exist {
+			// n was not present
+			done[n] = struct{}{}
+			proc(n)
+		}
+	})
+}
+
+// returns the weight of the node within the qset
+// normalized between 0-UINT64_MAX
+// *if a validator is repeated multiple times its weight is only the
+// weight of the first occurrence
+func GetNodeWeight(nodeID types.NodeID, qset types.SCPQuorumSet) uint64 {
+	n := uint64(qset.Threshold)
+	d := uint64(len(qset.InnerSets) + len(qset.Validators))
+
+	for _, qsetNode := range qset.Validators {
+		if qsetNode == nodeID {
+			return bigDivideReturn(math.MaxUint64, n, d, types.RoundDown)
+		}
+	}
+	for _, q := range qset.InnerSets {
+		leafW := GetNodeWeight(nodeID, q)
+		if leafW != 0 {
+			return bigDivideReturn(leafW, n, d, types.RoundDown)
+		}
+	}
+
+	return 0
+}
+
+func isQuorumSliceInternal(qset types.SCPQuorumSet, nodeSet []types.NodeID) bool {
+	thresholdLeft := qset.Threshold
+	for _, validator := range qset.Validators {
+		index := SliceIndex(len(qset.Validators), func(i int) bool { return validator == nodeSet[i] })
+		if index != -1 {
+			//found
+			thresholdLeft--
+			if thresholdLeft <= 0 {
+				return true
+			}
+		}
+	}
+	for _, inner := range qset.InnerSets {
+		if isQuorumSliceInternal(inner, nodeSet) {
+			thresholdLeft--
+			if thresholdLeft <= 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Tests this node against nodeSet for the specified qSethash.
+func IsQuorumSlice(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
+
+	log.Printf("SCP: LocalNode IsQuorumSlice len(nodeSet): %v", len(nodeSet))
+
+	return isQuorumSliceInternal(qSet, nodeSet)
+}
+
+//Return slice index for an element
+func SliceIndex(limit int, predicate func(i int) bool) int {
+	for i := 0; i < limit; i++ {
+		if predicate(i) {
+			return i
+		}
+	}
+	return -1
+}
+
+//util
+func bigDivideReturn(A uint64, B uint64, C uint64, rounding types.Rounding) uint64 {
+
+	a := new(big.Int).SetUint64(A)
+	b := new(big.Int).SetUint64(B)
+	c := new(big.Int).SetUint64(C)
+	x := big.NewInt(0)
+	if rounding == types.RoundDown {
+		x.Mul(a, b)
+		x.Div(x, c)
+	} else {
+		x.Mul(a, b)
+		x.Add(x, new(big.Int).Sub(c, big.NewInt(1))).Div(x, c)
+	}
+
+	return x.Uint64()
+}
+
+//util
+func bigDivide(result uint64, A uint64, B uint64, C uint64, rounding types.Rounding) bool {
+
+	a := new(big.Int).SetUint64(A)
+	b := new(big.Int).SetUint64(B)
+	c := new(big.Int).SetUint64(C)
+	x := big.NewInt(0)
+	if rounding == types.RoundDown {
+		x.Mul(a, b)
+		x.Div(x, c)
+	} else {
+		x.Mul(a, b)
+		x.Add(x, new(big.Int).Sub(c, big.NewInt(1))).Div(x, c)
+	}
+
+	result = x.Uint64()
+
+	if x.Cmp(new(big.Int).SetUint64(math.MaxUint64)) <= 0 {
+		// if x fits in uint64
+		return true
+	}
+	return false
 }

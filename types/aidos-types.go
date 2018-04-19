@@ -74,3 +74,11 @@ type uint256 [32]uint8
 
 type Signature [64]uint8
 type SignatureHint [4]uint8
+
+//enum
+type Rounding int
+
+const (
+	RoundDown Rounding = iota
+	RoundUp
+)
