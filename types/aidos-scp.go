@@ -76,14 +76,14 @@ type SCPStatement struct {
 }
 
 type SCPEnvelope struct {
-	statement SCPStatement
-	signature Signature
+	Statement SCPStatement
+	Signature Signature
 }
 
 // supports things like: A,B,C,(D,E,F),(G,H,(I,J,K,L))
 // only allows 2 levels of nesting
 type SCPQuorumSet struct {
-	Threshold  uint32
-	Validators []PublicKey
+	Threshold  uint32      `json:"t"`
+	Validators []PublicKey `json:"v"`
 	InnerSets  []SCPQuorumSet
 }

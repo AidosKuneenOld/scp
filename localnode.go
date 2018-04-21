@@ -27,6 +27,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"sort"
 
 	"github.com/scp/types"
 )
@@ -37,8 +38,8 @@ type LocalNode struct {
 	mQSet        types.SCPQuorumSet
 	mQSetHash    types.Hash
 
-	// alternative qset used during externalize {{mNodeID}}
-	gSingleQSetHash types.Hash          // hash of the singleton qset
+	// alternative qSet used during externalize {{mNodeID}}
+	gSingleQSetHash types.Hash          // hash of the singleton qSet
 	mSingleQSet     *types.SCPQuorumSet // {{mNodeID}}
 
 	mSCP *SCP
@@ -86,20 +87,20 @@ func SingletonQSet(nodeID types.NodeID) *types.SCPQuorumSet {
 }
 
 // called recursively
-func forAllNodesInternal(qset types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
+func forAllNodesInternal(qSet types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
 
-	for _, n := range qset.Validators {
+	for _, n := range qSet.Validators {
 		proc(n)
 	}
-	for _, q := range qset.InnerSets {
+	for _, q := range qSet.InnerSets {
 		forAllNodesInternal(q, proc)
 	}
 }
 
-// runs proc over all nodes contained in qset
-func ForAllNodes(qset types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
-	var done map[types.NodeID]struct{}
-	forAllNodesInternal(qset, func(n types.NodeID) {
+// runs proc over all nodes contained in qSet
+func ForAllNodes(qSet types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
+	done := make(map[types.NodeID]struct{})
+	forAllNodesInternal(qSet, func(n types.NodeID) {
 		if _, exist := done[n]; !exist {
 			// n was not present
 			done[n] = struct{}{}
@@ -108,20 +109,20 @@ func ForAllNodes(qset types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
 	})
 }
 
-// returns the weight of the node within the qset
+// returns the weight of the node within the qSet
 // normalized between 0-UINT64_MAX
 // *if a validator is repeated multiple times its weight is only the
 // weight of the first occurrence
-func GetNodeWeight(nodeID types.NodeID, qset types.SCPQuorumSet) uint64 {
-	n := uint64(qset.Threshold)
-	d := uint64(len(qset.InnerSets) + len(qset.Validators))
+func GetNodeWeight(nodeID types.NodeID, qSet types.SCPQuorumSet) uint64 {
+	n := uint64(qSet.Threshold)
+	d := uint64(len(qSet.InnerSets) + len(qSet.Validators))
 
-	for _, qsetNode := range qset.Validators {
-		if qsetNode == nodeID {
+	for _, qSetNode := range qSet.Validators {
+		if qSetNode == nodeID {
 			return bigDivideReturn(math.MaxUint64, n, d, types.RoundDown)
 		}
 	}
-	for _, q := range qset.InnerSets {
+	for _, q := range qSet.InnerSets {
 		leafW := GetNodeWeight(nodeID, q)
 		if leafW != 0 {
 			return bigDivideReturn(leafW, n, d, types.RoundDown)
@@ -131,10 +132,10 @@ func GetNodeWeight(nodeID types.NodeID, qset types.SCPQuorumSet) uint64 {
 	return 0
 }
 
-func isQuorumSliceInternal(qset types.SCPQuorumSet, nodeSet []types.NodeID) bool {
-	thresholdLeft := qset.Threshold
-	for _, validator := range qset.Validators {
-		index := SliceIndex(len(qset.Validators), func(i int) bool { return validator == nodeSet[i] })
+func isQuorumSliceInternal(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
+	thresholdLeft := qSet.Threshold
+	for _, validator := range qSet.Validators {
+		index := SliceIndex(len(qSet.Validators), func(i int) bool { return validator == nodeSet[i] })
 		if index != -1 {
 			//found
 			thresholdLeft--
@@ -143,7 +144,7 @@ func isQuorumSliceInternal(qset types.SCPQuorumSet, nodeSet []types.NodeID) bool
 			}
 		}
 	}
-	for _, inner := range qset.InnerSets {
+	for _, inner := range qSet.InnerSets {
 		if isQuorumSliceInternal(inner, nodeSet) {
 			thresholdLeft--
 			if thresholdLeft <= 0 {
@@ -160,6 +161,176 @@ func IsQuorumSlice(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
 	log.Printf("SCP: LocalNode IsQuorumSlice len(nodeSet): %v", len(nodeSet))
 
 	return isQuorumSliceInternal(qSet, nodeSet)
+}
+
+// called recursively
+func isVBlockingInternal(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
+	// There is no v-blocking set for {\empty}
+	if qSet.Threshold == 0 {
+		return false
+	}
+
+	leftTillBlock := (1 + len(qSet.Validators) + len(qSet.InnerSets)) - int(qSet.Threshold)
+	for _, validator := range qSet.Validators {
+		index := SliceIndex(len(qSet.Validators), func(i int) bool { return validator == nodeSet[i] })
+		if index != -1 {
+			//found
+			leftTillBlock--
+			if leftTillBlock <= 0 {
+				return true
+			}
+		}
+	}
+	for _, inner := range qSet.InnerSets {
+		if isVBlockingInternal(inner, nodeSet) {
+			leftTillBlock--
+			if leftTillBlock <= 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Tests this node against a map of nodeID -> T for the specified qSetHash.
+func IsVBlocking(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
+
+	log.Printf("SCP: LocalNode IsVBlocking len(nodeSet): %v", len(nodeSet))
+
+	return isVBlockingInternal(qSet, nodeSet)
+}
+
+// `isVBlocking` tests if the filtered nodes V are a v-blocking set for
+// this node.
+func IsVBlockingF(qSet types.SCPQuorumSet, map1 map[types.NodeID]types.SCPEnvelope,
+	filter func(types.SCPStatement) bool) bool {
+
+	var pNodes []types.NodeID
+
+	for k, v := range map1 {
+		if filter(v.Statement) {
+			pNodes = append(pNodes, k)
+		}
+	}
+
+	return IsVBlocking(qSet, pNodes)
+}
+
+// `isQuorum` tests if the filtered nodes V form a quorum
+// (meaning for each v \in V there is q \in Q(v)
+// included in V and we have quorum on V for qSetHash). `qfun` extracts the
+// SCPQuorumSetPtr from the SCPStatement for its associated node in map
+// (required for transitivity)
+func IsQuorum(qSet types.SCPQuorumSet, map1 map[types.NodeID]types.SCPEnvelope,
+	qFun func(types.SCPStatement) *types.SCPQuorumSet,
+	filter func(types.SCPStatement) bool) bool {
+
+	var pNodes []types.NodeID
+
+	for k, v := range map1 {
+		if filter(v.Statement) {
+			pNodes = append(pNodes, k)
+		}
+	}
+
+	count := 0
+	//exec at least once (do..while)
+	for while := true; while; while = (count != len(pNodes)) {
+		count = len(pNodes)
+		var fNodes []types.NodeID
+
+		quroumFilter := func(nodeID types.NodeID) bool {
+
+			qSetPtr := qFun(map1[nodeID].Statement)
+			if qSetPtr != nil {
+				return IsQuorumSlice(*qSetPtr, pNodes)
+			}
+			return false
+		}
+
+		for _, p := range pNodes {
+			if quroumFilter(p) {
+				fNodes = append(fNodes, p)
+			}
+		}
+		pNodes = fNodes
+	}
+
+	return IsQuorumSlice(qSet, pNodes)
+}
+
+// computes the distance to the set of v-blocking sets given
+// a set of nodes that agree (but can fail)
+// excluded, if set will be skipped altogether
+func FindClosestVBlocking(qSet types.SCPQuorumSet, map1 map[types.NodeID]types.SCPEnvelope,
+	filter func(types.SCPStatement) bool, excluded *types.NodeID) []types.NodeID {
+
+	s := make(map[types.NodeID]struct{})
+
+	for k, v := range map1 {
+		if filter(v.Statement) {
+			s[k] = struct{}{}
+		}
+	}
+	return findClosestVBlockingF(qSet, s, excluded)
+}
+
+func findClosestVBlockingF(qSet types.SCPQuorumSet, nodes map[types.NodeID]struct{},
+	excluded *types.NodeID) []types.NodeID {
+
+	leftTillBlock := (1 + len(qSet.Validators) + len(qSet.InnerSets)) - int(qSet.Threshold)
+
+	var res []types.NodeID
+
+	// first, compute how many top level items need to be blocked
+	for _, validator := range qSet.Validators {
+		if excluded == nil || !(validator == *excluded) {
+
+			if _, exist := nodes[validator]; !exist {
+				// n was not present
+				leftTillBlock--
+				if leftTillBlock == 0 {
+					// already blocked
+					return []types.NodeID{}
+				}
+			} else {
+				// save this for later
+				res = append(res, validator)
+			}
+		}
+	}
+
+	//SliceStable(slice interface{}, less func(i, j int) bool)
+	var resInternals [][]types.NodeID
+
+	for _, inner := range qSet.InnerSets {
+		v := findClosestVBlockingF(inner, nodes, excluded)
+		if len(v) == 0 {
+			leftTillBlock--
+			if leftTillBlock == 0 {
+				// already blocked
+				return []types.NodeID{}
+			}
+		} else {
+			resInternals = append(resInternals, v)
+		}
+	}
+	//sort by length (stable) after all are inserted
+	sort.SliceStable(resInternals, func(i, j int) bool { return len(resInternals[i]) < len(resInternals[j]) })
+
+	//use the top level validators to get closer
+	if len(res) > leftTillBlock {
+		res = res[:leftTillBlock-1]
+	}
+	leftTillBlock -= len(res)
+
+	// use subsets to get closer, using the smallest ones first
+	for it := 0; leftTillBlock != 0 && it < len(resInternals); it++ {
+		res = append(res, resInternals[it]...)
+		leftTillBlock--
+	}
+
+	return res
 }
 
 //Return slice index for an element
