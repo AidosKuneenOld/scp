@@ -31,7 +31,7 @@ type SCPBallot struct {
 	value   interface{} // x
 }
 
-type SCPStatementType int
+type SCPStatementType int32
 
 const (
 	SCPStPrepare SCPStatementType = iota
@@ -39,6 +39,26 @@ const (
 	SCPStExternalize
 	SCPStNominate
 )
+
+var scpStatementTypeMap = map[int32]string{
+	0: "ScpStPrepare",
+	1: "ScpStConfirm",
+	2: "ScpStExternalize",
+	3: "StNominate",
+}
+
+// ValidEnum validates a proposed value for this enum.  Implements
+// the Enum interface for ScpStatementType
+func (e SCPStatementType) ValidEnum(v int32) bool {
+	_, ok := scpStatementTypeMap[v]
+	return ok
+}
+
+// String returns the name of `e`
+func (e SCPStatementType) String() string {
+	name, _ := scpStatementTypeMap[int32(e)]
+	return name
+}
 
 type SCPNomination struct {
 	quorumSetHash Hash          // D
@@ -86,4 +106,9 @@ type SCPQuorumSet struct {
 	Threshold  uint32      `json:"t"`
 	Validators []PublicKey `json:"v"`
 	InnerSets  []SCPQuorumSet
+}
+
+type Json struct {
+	T uint32        `json:"t"`
+	V []interface{} `json:"v"` //PublicKey or SCPQuorumSet
 }

@@ -23,7 +23,7 @@
 package types
 
 //enum
-type CryptoKeyType int
+type CryptoKeyType int32
 
 const (
 	KeyTypeED25519 CryptoKeyType = iota
@@ -31,15 +31,51 @@ const (
 	KeyTypeHashX
 )
 
+var cryptoKeyTypeMap = map[int32]string{
+	0: "KeyTypeEd25519",
+	1: "KeyTypePreAuthTx",
+	2: "KeyTypeHashX",
+}
+
+// ValidEnum validates a proposed value for this enum.  Implements
+// the Enum interface for CryptoKeyType
+func (e CryptoKeyType) ValidEnum(v int32) bool {
+	_, ok := cryptoKeyTypeMap[v]
+	return ok
+}
+
+// String returns the name of `e`
+func (e CryptoKeyType) String() string {
+	name, _ := cryptoKeyTypeMap[int32(e)]
+	return name
+}
+
 //enum
-type PublicKeyType int
+type PublicKeyType int32
 
 const (
 	PublicKeyTypeED25519 PublicKeyType = iota
 )
 
+var publicKeyTypeMap = map[int32]string{
+	0: "PublicKeyTypeEd25519",
+}
+
+// ValidEnum validates a proposed value for this enum.  Implements
+// the Enum interface for PublicKeyType
+func (e PublicKeyType) ValidEnum(v int32) bool {
+	_, ok := publicKeyTypeMap[v]
+	return ok
+}
+
+// String returns the name of `e`
+func (e PublicKeyType) String() string {
+	name, _ := publicKeyTypeMap[int32(e)]
+	return name
+}
+
 //enum
-type SignerKeyType int
+type SignerKeyType int32
 
 const (
 	SignerKeyTypeED25519   = KeyTypeED25519
@@ -47,30 +83,41 @@ const (
 	SignerKeyTypeHashX     = KeyTypeHashX
 )
 
+var signerKeyTypeMap = map[int32]string{
+	0: "SignerKeyTypeEd25519",
+	1: "SignerKeyTypePreAuthTx",
+	2: "SignerKeyTypeHashX",
+}
+
+// ValidEnum validates a proposed value for this enum.  Implements
+// the Enum interface for SignerKeyType
+func (e SignerKeyType) ValidEnum(v int32) bool {
+	_, ok := signerKeyTypeMap[v]
+	return ok
+}
+
+// String returns the name of `e`
+func (e SignerKeyType) String() string {
+	name, _ := signerKeyTypeMap[int32(e)]
+	return name
+}
+
 type PublicKey struct {
-	PublicKeyTypeED25519 struct {
-		ed25519 uint256
-	}
+	Type    PublicKeyType
+	Ed25519 *Uint256
 }
 
 type SignerKey struct {
-	SignerKeyTypeED25519 struct {
-		ed25519 uint256
-	}
-	SignerKeyTypePreAuthTx struct {
-		/* Hash of Transaction structure */
-		preAuthTx uint256
-	}
-	SignerKeyTypeHashX struct {
-		/* Hash of Transaction structure */
-		hashX uint256
-	}
+	Type      SignerKeyType
+	Ed25519   *Uint256
+	PreAuthTx *Uint256
+	HashX     *Uint256
 }
 
 type NodeID = PublicKey
 
 type Hash [32]uint8
-type uint256 [32]uint8
+type Uint256 [32]uint8
 
 type Signature [64]uint8
 type SignatureHint [4]uint8

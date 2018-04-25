@@ -24,3 +24,11 @@ package scp
 
 type SCP struct {
 }
+
+type TriBool int32
+
+const (
+	TBTrue TriBool = iota
+	TBFalse
+	TBMaybe
+)

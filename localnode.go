@@ -24,6 +24,7 @@ package scp
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"log"
 	"math"
 	"math/big"
@@ -61,7 +62,7 @@ func (nl *LocalNode) NLocalNode(nodeID types.NodeID, isValidator bool,
 	nl.gSingleQSetHash = sha256.Sum256(types.Pack(nl.mSingleQSet))
 }
 
-// returns a quorum set {{ nodeID }}
+// buildSingletonQSet returns a quorum set {{ nodeID }}
 func buildSingletonQSet(nodeID types.NodeID) *types.SCPQuorumSet {
 	return &types.SCPQuorumSet{
 		Threshold:  1,
@@ -81,7 +82,7 @@ func (nl *LocalNode) QuorumSetHash() types.Hash {
 	return nl.mQSetHash
 }
 
-// returns the quorum set {{X}}
+// SingletonQSet returns the quorum set {{X}}
 func SingletonQSet(nodeID types.NodeID) *types.SCPQuorumSet {
 	return buildSingletonQSet(nodeID)
 }
@@ -97,7 +98,7 @@ func forAllNodesInternal(qSet types.SCPQuorumSet, proc func(nodeID types.NodeID)
 	}
 }
 
-// runs proc over all nodes contained in qSet
+// ForAllNodes runs proc over all nodes contained in qSet
 func ForAllNodes(qSet types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
 	done := make(map[types.NodeID]struct{})
 	forAllNodesInternal(qSet, func(n types.NodeID) {
@@ -109,7 +110,7 @@ func ForAllNodes(qSet types.SCPQuorumSet, proc func(nodeID types.NodeID)) {
 	})
 }
 
-// returns the weight of the node within the qSet
+// GetNodeWeight returns the weight of the node within the qSet
 // normalized between 0-UINT64_MAX
 // *if a validator is repeated multiple times its weight is only the
 // weight of the first occurrence
@@ -155,7 +156,7 @@ func isQuorumSliceInternal(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool
 	return false
 }
 
-// Tests this node against nodeSet for the specified qSethash.
+// IsQuorumSlice tests this node against nodeSet for the specified qSethash.
 func IsQuorumSlice(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
 
 	log.Printf("SCP: LocalNode IsQuorumSlice len(nodeSet): %v", len(nodeSet))
@@ -192,7 +193,7 @@ func isVBlockingInternal(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
 	return false
 }
 
-// Tests this node against a map of nodeID -> T for the specified qSetHash.
+// IsVBlocking tests this node against a map of nodeID -> T for the specified qSetHash.
 func IsVBlocking(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
 
 	log.Printf("SCP: LocalNode IsVBlocking len(nodeSet): %v", len(nodeSet))
@@ -200,7 +201,7 @@ func IsVBlocking(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
 	return isVBlockingInternal(qSet, nodeSet)
 }
 
-// `isVBlocking` tests if the filtered nodes V are a v-blocking set for
+// IsVBlockingF tests if the filtered nodes V are a v-blocking set for
 // this node.
 func IsVBlockingF(qSet types.SCPQuorumSet, map1 map[types.NodeID]types.SCPEnvelope,
 	filter func(types.SCPStatement) bool) bool {
@@ -216,7 +217,7 @@ func IsVBlockingF(qSet types.SCPQuorumSet, map1 map[types.NodeID]types.SCPEnvelo
 	return IsVBlocking(qSet, pNodes)
 }
 
-// `isQuorum` tests if the filtered nodes V form a quorum
+// IsQuorum tests if the filtered nodes V form a quorum
 // (meaning for each v \in V there is q \in Q(v)
 // included in V and we have quorum on V for qSetHash). `qfun` extracts the
 // SCPQuorumSetPtr from the SCPStatement for its associated node in map
@@ -259,7 +260,7 @@ func IsQuorum(qSet types.SCPQuorumSet, map1 map[types.NodeID]types.SCPEnvelope,
 	return IsQuorumSlice(qSet, pNodes)
 }
 
-// computes the distance to the set of v-blocking sets given
+// FindClosestVBlocking computes the distance to the set of v-blocking sets given
 // a set of nodes that agree (but can fail)
 // excluded, if set will be skipped altogether
 func FindClosestVBlocking(qSet types.SCPQuorumSet, map1 map[types.NodeID]types.SCPEnvelope,
@@ -275,6 +276,7 @@ func FindClosestVBlocking(qSet types.SCPQuorumSet, map1 map[types.NodeID]types.S
 	return findClosestVBlockingF(qSet, s, excluded)
 }
 
+//filtered
 func findClosestVBlockingF(qSet types.SCPQuorumSet, nodes map[types.NodeID]struct{},
 	excluded *types.NodeID) []types.NodeID {
 
@@ -333,7 +335,85 @@ func findClosestVBlockingF(qSet types.SCPQuorumSet, nodes map[types.NodeID]struc
 	return res
 }
 
-//Return slice index for an element
+func (nl *LocalNode) ToJson(qSet types.SCPQuorumSet, value *types.Json) {
+	value.T = qSet.Threshold
+	for _, v := range qSet.Validators {
+		//TODO PublicKey to short string method
+		value.V = append(value.V, v)
+	}
+	for _, s := range qSet.InnerSets {
+		var iValue types.Json
+		nl.ToJson(s, &iValue)
+		value.V = append(value.V, iValue)
+	}
+}
+
+func (nl *LocalNode) ToString(qSet types.SCPQuorumSet) string {
+	var v types.Json
+	nl.ToJson(qSet, &v)
+	fw, err := json.Marshal(v)
+	if err != nil {
+		log.Printf("SCP: LocalNode ToString: %s", err)
+	}
+	return string(fw)
+}
+
+func (nl *LocalNode) NodeID() types.NodeID {
+	return nl.mNodeID
+}
+
+func (nl *LocalNode) IsValidator() bool {
+	return nl.mIsValidator
+}
+
+func (nl *LocalNode) NodeInQuorum(node types.NodeID,
+	qFun func(types.SCPStatement) *types.SCPQuorumSet,
+	map1 map[types.NodeID][]types.SCPStatement) TriBool {
+	// perform a transitive search, starting with the local node
+	// the order is not important, so we can use sets to keep track of the work
+
+	backlog := make(map[types.NodeID]struct{})
+	visited := make(map[types.NodeID]struct{})
+	backlog[nl.mNodeID] = struct{}{}
+
+	res := TBFalse
+
+	for key := range backlog {
+
+		if key == node {
+			return TBTrue
+		}
+		delete(backlog, key)
+		visited[key] = struct{}{}
+
+		if _, exist := map1[key]; !exist {
+			// key was not present
+			// can't lookup information on this node
+			res = TBMaybe
+			continue
+		}
+
+		for _, st := range map1[key] {
+
+			qSetPtr := qFun(st)
+			if qSetPtr == nil {
+				// can't find the quorum set
+				res = TBMaybe
+				continue
+			}
+			// see if we need to explore further
+			ForAllNodes(*qSetPtr, func(n types.NodeID) {
+				if _, exist := visited[n]; !exist {
+					//n was not present
+					backlog[n] = struct{}{}
+				}
+			})
+		}
+	}
+	return res
+}
+
+//SliceIndex returns slice index for an element
 func SliceIndex(limit int, predicate func(i int) bool) int {
 	for i := 0; i < limit; i++ {
 		if predicate(i) {
