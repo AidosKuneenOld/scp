@@ -56,7 +56,9 @@ func (nl *LocalNode) NLocalNode(nodeID types.NodeID, isValidator bool,
 	NormalizeQSet(&nl.mQSet)
 	nl.mQSetHash = sha256.Sum256(types.Pack(nl.mQSet))
 
-	log.Printf("SCP: LocalNode@%.6s qSet: %.3X", nl.mNodeID, nl.mQSetHash)
+	//StringAbbrev, HexAbbrev
+	// TODO encode mQSetHash?
+	log.Printf("INFO SCP: LocalNode@%.6s qSet: %.3X", nl.mNodeID, nl.mQSetHash)
 
 	nl.mSingleQSet = buildSingletonQSet(nl.mNodeID)
 	nl.gSingleQSetHash = sha256.Sum256(types.Pack(nl.mSingleQSet))
@@ -159,7 +161,7 @@ func isQuorumSliceInternal(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool
 // IsQuorumSlice tests this node against nodeSet for the specified qSethash.
 func IsQuorumSlice(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
 
-	log.Printf("SCP: LocalNode IsQuorumSlice len(nodeSet): %v", len(nodeSet))
+	log.Printf("TRACE SCP: LocalNode IsQuorumSlice len(nodeSet): %v", len(nodeSet))
 
 	return isQuorumSliceInternal(qSet, nodeSet)
 }
@@ -196,7 +198,7 @@ func isVBlockingInternal(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
 // IsVBlocking tests this node against a map of nodeID -> T for the specified qSetHash.
 func IsVBlocking(qSet types.SCPQuorumSet, nodeSet []types.NodeID) bool {
 
-	log.Printf("SCP: LocalNode IsVBlocking len(nodeSet): %v", len(nodeSet))
+	log.Printf("TRACE SCP: LocalNode IsVBlocking len(nodeSet): %v", len(nodeSet))
 
 	return isVBlockingInternal(qSet, nodeSet)
 }
@@ -353,7 +355,7 @@ func (nl *LocalNode) ToString(qSet types.SCPQuorumSet) string {
 	nl.ToJson(qSet, &v)
 	fw, err := json.Marshal(v)
 	if err != nil {
-		log.Printf("SCP: LocalNode ToString: %s", err)
+		log.Printf("ERROR SCP: LocalNode ToString: %s", err)
 	}
 	return string(fw)
 }

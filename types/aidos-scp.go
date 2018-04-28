@@ -67,8 +67,8 @@ type SCPNomination struct {
 }
 
 type SCPStatement struct {
-	nodeID    NodeID // v
-	slotIndex uint64 // i
+	NodeID    NodeID // v
+	SlotIndex uint64 // i
 
 	SCPStPrepare struct {
 		quorumSetHash Hash       // D
@@ -112,3 +112,6 @@ type Json struct {
 	T uint32        `json:"t"`
 	V []interface{} `json:"v"` //PublicKey or SCPQuorumSet
 }
+
+const HexAbbrev uint8 = 3
+const StrAbbrev uint8 = 6

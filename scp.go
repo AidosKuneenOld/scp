@@ -22,9 +22,64 @@
 
 package scp
 
+import (
+	"log"
+
+	"github.com/scp/types"
+)
+
 type SCP struct {
+	mDriver    SCPDriver
+	mLocalNode *LocalNode
 }
 
+func (ns *SCP) nSCP(driver SCPDriver, nodeID types.NodeID, isValidator bool,
+	qSetLocal types.SCPQuorumSet) {
+	ns.mDriver = driver
+	ns.mLocalNode.NLocalNode(nodeID, isValidator, qSetLocal, ns)
+}
+
+// this is the main entry point of the SCP library
+// it processes the envelope, updates the internal state and
+// invokes the appropriate methods
+func (ns *SCP) receiveEnvelope(envelope types.SCPEnvelope) EnvelopeState {
+	// If the envelope is not correctly signed, we ignore it.
+	if !ns.mDriver.verifyEnvelope(envelope) {
+		log.Println("DEBUG SCP: receiveEnvelope invalid")
+		return Invalid
+	}
+	//slotIndex := envelope.Statement.SlotIndex
+	//TODO create function for return
+	return Valid
+}
+
+//enum
+type EnvelopeState int32
+
+const (
+	Invalid EnvelopeState = iota
+	Valid
+)
+
+var envelopeStateMap = map[int32]string{
+	0: "Invalid",
+	1: "Valid",
+}
+
+// ValidEnum validates a proposed value for this enum.  Implements
+// the Enum interface for EnvelopeState
+func (e EnvelopeState) ValidEnum(v int32) bool {
+	_, ok := envelopeStateMap[v]
+	return ok
+}
+
+// String returns the name of `e`
+func (e EnvelopeState) String() string {
+	name, _ := envelopeStateMap[int32(e)]
+	return name
+}
+
+//enum
 type TriBool int32
 
 const (
@@ -32,3 +87,22 @@ const (
 	TBFalse
 	TBMaybe
 )
+
+var triBoolMap = map[int32]string{
+	0: "TBTrue",
+	1: "TBFalse",
+	2: "TBMaybe",
+}
+
+// ValidEnum validates a proposed value for this enum.  Implements
+// the Enum interface for ScpStatementType
+func (e TriBool) ValidEnum(v int32) bool {
+	_, ok := triBoolMap[v]
+	return ok
+}
+
+// String returns the name of `e`
+func (e TriBool) String() string {
+	name, _ := triBoolMap[int32(e)]
+	return name
+}
